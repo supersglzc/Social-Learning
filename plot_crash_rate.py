@@ -14,7 +14,7 @@ def play_game(ag1, ag2, role1, role2, init1, init2, punishment1, punishment2):
     # Reset env
     [observations_row, observations_column, observations] = env.reset(role1=role1, role2=role2, init1=init1,
                                                                       init2=init2, punishment1=punishment1,
-                                                                      punishment2=punishment2)
+                                                                       punishment2=punishment2)
     pred1_state = observations_row
     pred2_state = observations_column
 

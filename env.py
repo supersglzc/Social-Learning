@@ -8,11 +8,11 @@ class IntersectionEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
     CAPTURE_RADIUS = 3
-    MAX_STEPS = 20
+    MAX_STEPS = 15
     intersection_location = [3, 3]
-    norm_reward = 2
+    norm_reward = 5
 
-    def __init__(self, n_predator=2, image=True):
+    def __init__(self, n_predator=4, image=True):
         super(IntersectionEnv, self).__init__()
 
         self.n_predator = n_predator
@@ -20,7 +20,13 @@ class IntersectionEnv(gym.Env):
         self.config = Config()
         self.punishment1 = None
         self.punishment2 = None
-
+        self.punishment3 = None
+        self.punishment4 = None
+        self.crash = None
+        self.c1 = None
+        self.c2 = None
+        self.c3 = None
+        self.c4 = None
         self.base_gridmap_array = self._load_map()
         self.base_gridmap_image = self._to_image(self.base_gridmap_array)
 
@@ -28,7 +34,6 @@ class IntersectionEnv(gym.Env):
         self.observation_space = gym.spaces.Box(low=0., high=1., shape=self.observation_shape)
 
         self.action_space = gym.spaces.Discrete(len(self.config.action_dict_0))
-        self.crash_1 = 0
 
     @staticmethod
     def _load_map():
@@ -60,16 +65,25 @@ class IntersectionEnv(gym.Env):
 
         return image
 
-    def _reset_agents(self, role1, role2, init1, init2):
+    def _reset_agents(self, role1, role2,role3,role4,init1, init2,init3,init4):
         self.crash_1 = 0
+        self.crash = [0]*4
         self.agents = []
+        self.c1 = None
+        self.c2 = None
+        self.c3 = None
+        self.c4 = None
 
-        locations = [np.array([3, 3 - init1]), np.array([3 - init2, 3])]
-
+        locations = [np.array([3, 3 - init1]), np.array([3 - init2, 3]), np.array([4, 3 - init3]),np.array([3 - init3,4])]
         agent = Agent(0, "predator", self.base_gridmap_array, 5, locations[0], role1)
         self.agents.append(agent)
         agent = Agent(1, "predator", self.base_gridmap_array, 5, locations[1], role2)
         self.agents.append(agent)
+        agent = Agent(2, "predator", self.base_gridmap_array, 5, locations[2], role3)
+        self.agents.append(agent)
+        agent = Agent(3, "predator", self.base_gridmap_array, 5, locations[3], role4)
+        self.agents.append(agent)
+
 
     def _render_gridmap(self):
         gridmap_image = np.copy(self.base_gridmap_image)
@@ -83,12 +97,17 @@ class IntersectionEnv(gym.Env):
     def step(self, actions):
         for i in range(len(self.agents)):
             action = actions[i]
-
-            if self.agents[i].initial_l[0] == 3:
-                action = list(self.config.action_dict_0.keys())[action]
+            if self.agents[i].initial_l[1] < 3:
+                if self.crash[i] == 1:
+                    action = list(self.config.action_dict_0.keys())[0]
+                else:
+                    action = list(self.config.action_dict_0.keys())[action]
                 next_location = self.agents[i].location + self.config.action_dict_0[action]
             else:
-                action = list(self.config.action_dict_1.keys())[action]
+                if self.crash[i] == 1:
+                    action = list(self.config.action_dict_0.keys())[0]
+                else:
+                    action = list(self.config.action_dict_1.keys())[action]
                 next_location = self.agents[i].location + self.config.action_dict_1[action]
 
             self.agents[i].location = next_location
@@ -96,66 +115,87 @@ class IntersectionEnv(gym.Env):
         gridmap_image = self._render_gridmap()
 
         observations = list()
-        for agent in self.agents[:2]:
+        for agent in self.agents[:4]:
             observation = self._get_observation(agent, gridmap_image.copy())
             observations.append(observation)
         observations.append(self._get_observation_full(gridmap_image.copy()))
 
         hunted_predator = None
-        if self.agents[0].initial_l[0] == 3 and self.agents[1].initial_l[1] == 3:
-            if (self.agents[0].location[1] == 4) and (self.agents[1].location[0] == 4):  # 10 is edge
+        if self.agents[0].initial_l[0] == 3 and self.agents[1].initial_l[1] == 3 and self.agents[2].initial_l[0] == 3 and self.agents[3].initial_l[0] == 3:
+            if (self.agents[0].location[1] == 5) and (self.agents[1].location[0] == 5) and (self.agents[2].location[1] == 5) and (self.agents[3].location[0] == 5):  # 10 is edge
                 hunted_predator = 1
-        else:
-            if (self.agents[0].location[0] == 4) and (self.agents[1].location[1] == 4):  # 10 is edge
-                hunted_predator = 1
-
-        crash = None
-        crash_location = None
+        #else:
+            #if (self.agents[0].location[0] == 4) and (self.agents[1].location[1] == 4):  # 10 is edge
+                #hunted_predator = 1
         all_locations = []
-        for agent in self.agents:
-            if agent.location.tolist() in all_locations:
-                crash = 1
-                self.crash_1 = 1
-                crash_location = agent.location
-
+        n = len(self.agents)
+        d = {}
+        for i in range(n):
+            d [i] = self.agents[i].location.tolist()
+            m = len(all_locations)
+            for j in range(m):
+                if d[i]==all_locations[j]:
+                    self.crash[i]=1
+                    self.crash[j]=1
             else:
-                all_locations.append(agent.location.tolist())
+                all_locations.append(self.agents[i].location.tolist())
 
-        rewards = [-2, -2]
+        rewards = [-1]*4
 
-        for i in range(2):
-            if self.agents[i].initial_l[0] == 3:
-                if self.agents[i].location[1] == 4:
+        for i in range(4):
+            if self.agents[i].initial_l[1] < 3:
+                if self.agents[i].location[1] == 5:
                     rewards[i] = 0
             else:
-                if self.agents[i].location[0] == 4:
+                if self.agents[i].location[0] == 5:
                     rewards[i] = 0
-
-        if crash is not None:
-            if np.array_equal(self.agents[0].location, crash_location):
-                rewards[0] = self.punishment1
-            if np.array_equal(self.agents[1].location, crash_location):
-                rewards[1] = self.punishment2
+        if self.crash != [0]*3:
+            if self.crash[0]==1:
+                if self.c1 is None:
+                    rewards[0] = self.punishment1
+                    self.c1 = 1
+                else:
+                    rewards[0] = 0
+            if self.crash[1]==1:
+                if self.c2 is None:
+                    rewards[1] = self.punishment2
+                    self.c2 = 1
+                else:
+                    rewards[1] = 0
+            if self.crash[2]==1:
+                if self.c3 is None:
+                    rewards[2] = self.punishment3
+                    self.c3 = 1
+                else:
+                    rewards[2] = 0
+            if self.crash[3]==1:
+                if self.c4 is None:
+                    rewards[3] = self.punishment4
+                    self.c4 = 1
+                else:
+                    rewards[3] = 0
 
         if hunted_predator is not None:
             rewards = [self.norm_reward, self.norm_reward]
         self.n_steps += 1
 
-        if (hunted_predator is not None) or (self.n_steps >= self.MAX_STEPS) or (crash is not None):
+        if (hunted_predator is not None) or (self.n_steps >= self.MAX_STEPS) or (self.crash ==[1, 1, 1,1]):
             done = True
         else:
             done = False
-
+        # print(rewards,self.crash)
         return observations, rewards, done, {}
 
-    def reset(self, role1, role2, init1, init2, punishment1, punishment2):
+    def reset(self, role1, role2, role3,role4, init1, init2,init3, init4,punishment1, punishment2,punishment3,punishment4):
         self.n_steps = 0
         self.punishment1 = punishment1
         self.punishment2 = punishment2
-        self._reset_agents(role1, role2, init1, init2)
+        self.punishment3 = punishment3
+        self.punishment4 = punishment4
+        self._reset_agents(role1, role2,role3,role4,init1, init2,init3,init4)
         gridmap_image = self._render_gridmap()
         observations = []
-        for agent in self.agents[:2]:
+        for agent in self.agents[:4]:
             observation = self._get_observation(agent, gridmap_image.copy())
             observations.append(observation)
         observations.append(self._get_observation_full(gridmap_image.copy()))
@@ -201,10 +241,15 @@ class Config(object):
         self.action_dict_0 = {
             "stay": np.array([0, 0]),
             "move_forward": np.array([0, 1]),
+            #'move_left' : np.array([1, 0]),
+            #'move_right': np.array([-1, 0]),
+
         }
         self.action_dict_1 = {
             "stay": np.array([0, 0]),
             "move_forward": np.array([1, 0]),
+            #'move_left': np.array([0, -1]),
+            #'move_right': np.array([0, 1]),
         }
 
     def _set_grid_dict(self):
@@ -258,27 +303,24 @@ class Agent(object):
         else:
             self.hit_wall = True
 
-
+# Test
 if __name__ == '__main__':
     N_PREDATOR = 4
     env = IntersectionEnv(n_predator=N_PREDATOR, image=True)
-    observations = env.reset("cooperative", "defective", 3, 3, -5, -5)  # env.render()
-    plt.figure(2)
+    observations = env.reset("cooperative", "cooperative", "cooperative","cooperative", 3, 3, 3, 3,-10,-10, -10, -10)  # env.render()
+    plt.figure(3)
     plt.cla()
-    plt.imshow(observations[2])
+    plt.imshow(observations[3])
     plt.axis('off')
-    plt.pause(2)
-
+    plt.pause(3)
     for i in range(env.MAX_STEPS):
         pred_actions = [env.action_space.sample() for _ in range(N_PREDATOR)]
         actions = pred_actions
         observations, rewards, done, _ = env.step(actions)  # env.render()
-        print(rewards)
-        plt.figure(2)
+        plt.figure(3)
         plt.cla()
-        plt.imshow(observations[2])
+        plt.imshow(observations[3].squeeze())
         plt.axis('off')
-        plt.pause(2)
-
+        plt.pause(3)
         if done:
             break
